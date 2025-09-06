@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"snippetbox.stwn.dev/internal/models"
+	"snippetbox.stwn.dev/internal/validator"
 )
 
 type snippetCreateForm struct {
-	Title       string
-	Content     string
-	Expires     int
-	FieldErrors map[string]string
+	Title               string
+	Content             string
+	Expires             int
+	validator.Validator // struct embedding
 }
 
 func (app *application) handlerHome(w http.ResponseWriter, r *http.Request) {
@@ -78,26 +77,16 @@ func (app *application) handlerSnippetCreatePost(w http.ResponseWriter, r *http.
 
 	// init struct
 	form := snippetCreateForm{
-		Title:       r.PostForm.Get("title"),
-		Content:     r.PostForm.Get("content"),
-		Expires:     expires,
-		FieldErrors: map[string]string{},
+		Title:   r.PostForm.Get("title"),
+		Content: r.PostForm.Get("content"),
+		Expires: expires,
 	}
 
-	// validation
-	if strings.TrimSpace(form.Title) == "" {
-		form.FieldErrors["title"] = "This field cannot be blank."
-	} else if utf8.RuneCountInString(form.Title) > 100 {
-		form.FieldErrors["title"] = "This field cannot be more than 100 characters long."
-	}
-
-	if strings.TrimSpace(form.Content) == "" {
-		form.FieldErrors["content"] = "This field cannot be blank."
-	}
-
-	if expires != 1 && expires != 7 && expires != 365 {
-		form.FieldErrors["expires"] = "This field must equal to 1, 7, or 365"
-	}
+	// using embed validator
+	form.CheckField(validator.NotBlank(form.Title), "title", "This field cannot be blank.")
+	form.CheckField(validator.MaxChars(form.Title, 100), "title", "This field cannot be more than 100 characters long.")
+	form.CheckField(validator.NotBlank(form.Content), "content", "This field cannot be blank.")
+	form.CheckField(validator.PermittedValue(form.Expires, 1, 7, 365), "expires", "This field must equal to 1, 7, or 365.")
 
 	// return to client with failed data
 	if len(form.FieldErrors) > 0 {
