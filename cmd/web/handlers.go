@@ -11,10 +11,11 @@ import (
 )
 
 type snippetCreateForm struct {
-	Title               string
-	Content             string
-	Expires             int
-	validator.Validator // struct embedding
+	Title   string `form:"title"`
+	Content string `form:"content"`
+	Expires int    `form:"expires"`
+	// struct embedding
+	validator.Validator `form:"-"`
 }
 
 func (app *application) handlerHome(w http.ResponseWriter, r *http.Request) {
@@ -63,23 +64,19 @@ func (app *application) handlerSnippetCreate(w http.ResponseWriter, r *http.Requ
 }
 
 func (app *application) handlerSnippetCreatePost(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
+	// declare new empty instance of snippetCreateForm struct
+	var form snippetCreateForm
+
+	err := app.decodePostForm(r, &form)
 	if err != nil {
 		app.clientError(w, http.StatusBadRequest)
 		return
 	}
 
-	expires, err := strconv.Atoi(r.PostForm.Get("expires"))
+	err = app.formDecoder.Decode(&form, r.PostForm)
 	if err != nil {
 		app.clientError(w, http.StatusBadRequest)
 		return
-	}
-
-	// init struct
-	form := snippetCreateForm{
-		Title:   r.PostForm.Get("title"),
-		Content: r.PostForm.Get("content"),
-		Expires: expires,
 	}
 
 	// using embed validator
@@ -89,7 +86,7 @@ func (app *application) handlerSnippetCreatePost(w http.ResponseWriter, r *http.
 	form.CheckField(validator.PermittedValue(form.Expires, 1, 7, 365), "expires", "This field must equal to 1, 7, or 365.")
 
 	// return to client with failed data
-	if len(form.FieldErrors) > 0 {
+	if !form.Valid() {
 		data := app.newTemplateData(r)
 		data.Form = form
 		app.render(w, r, http.StatusUnprocessableEntity, "create.html", data)
