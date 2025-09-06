@@ -8,17 +8,22 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/alexedwards/scs/redisstore"
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-playground/form/v4"
+	"github.com/gomodule/redigo/redis"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"snippetbox.stwn.dev/internal/models"
 )
 
 type application struct {
-	logger        *slog.Logger
-	snippets      *models.SnippetModel
-	templateCache map[string]*template.Template
-	formDecoder   *form.Decoder
+	logger         *slog.Logger
+	snippets       *models.SnippetModel
+	templateCache  map[string]*template.Template
+	formDecoder    *form.Decoder
+	sessionManager *scs.SessionManager
 }
 
 func main() {
@@ -41,6 +46,17 @@ func main() {
 	logger.Info("Connected to PostgreSQL Database.")
 	defer db.Close()
 
+	// init session redis
+	redisPool := &redis.Pool{
+		MaxIdle: 10,
+		Dial: func() (redis.Conn, error) {
+			return redis.Dial("tcp", "localhost:6379")
+		},
+	}
+	sessionManager := scs.New()
+	sessionManager.Store = redisstore.New(redisPool)
+	sessionManager.Lifetime = 12 * time.Hour
+
 	// init template cache
 	templateCache, err := newTemplateCache()
 	if err != nil {
@@ -53,10 +69,11 @@ func main() {
 
 	// init application struct by DI
 	app := &application{
-		logger:        logger,
-		snippets:      &models.SnippetModel{DB: db},
-		templateCache: templateCache,
-		formDecoder:   formDecoder,
+		logger:         logger,
+		snippets:       &models.SnippetModel{DB: db},
+		templateCache:  templateCache,
+		formDecoder:    formDecoder,
+		sessionManager: sessionManager,
 	}
 
 	logger.Info("starting server", "addr", *addr)

@@ -48,9 +48,12 @@ func (app *application) handlerSnippetView(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	app.render(w, r, http.StatusOK, "view.html", templateData{
-		Snippet: snippet,
-	})
+	flash := app.sessionManager.PopString(r.Context(), "flash")
+	data := app.newTemplateData(r)
+	data.Snippet = snippet
+	data.Flash = flash
+
+	app.render(w, r, http.StatusOK, "view.html", data)
 }
 
 func (app *application) handlerSnippetCreate(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +101,9 @@ func (app *application) handlerSnippetCreatePost(w http.ResponseWriter, r *http.
 		app.serverError(w, r, err)
 		return
 	}
+
+	// session flash
+	app.sessionManager.Put(r.Context(), "flash", "Snippet successfully created!")
 
 	http.Redirect(w, r, fmt.Sprintf("/snippet/view/%d", id), http.StatusSeeOther)
 }

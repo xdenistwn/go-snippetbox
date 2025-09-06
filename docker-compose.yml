@@ -9,6 +9,18 @@ services:
             - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
         volumes:
             - snippetbox_pgsql_data:/var/lib/postgresql/data
+    snippetbox_redis:
+        image: redis:alpine
+        container_name: snippetbox_redis
+        restart: unless-stopped
+        ports:
+        - "${REDIS_PORT}:6379"
+        expose:
+        - 6379
+        volumes:
+        - snippetbox_redis_data:/data
+
 
 volumes:
     snippetbox_pgsql_data:
+    snippetbox_redis_data:
