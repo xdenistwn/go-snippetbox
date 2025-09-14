@@ -1,9 +1,11 @@
 package main
 
+// 247
+
 import (
+	"crypto/tls"
 	"database/sql"
 	"flag"
-	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -19,8 +21,10 @@ import (
 )
 
 type application struct {
+	env            string
 	logger         *slog.Logger
 	snippets       *models.SnippetModel
+	users          *models.UserModel
 	templateCache  map[string]*template.Template
 	formDecoder    *form.Decoder
 	sessionManager *scs.SessionManager
@@ -28,14 +32,12 @@ type application struct {
 
 func main() {
 	// parse command parameter
-	addr := flag.String("addr", "4000", "HTTP network address")
+	addr := flag.String("addr", ":4000", "HTTP network address")
 	dsn := flag.String("dsn", "postgres://web:snippet123web@localhost:5432/snippetbox?sslmode=disable", "PostgreSQL data source")
 	flag.Parse()
 
 	// standard go logger
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	// connect db
 	db, err := openDB(*dsn)
@@ -46,7 +48,7 @@ func main() {
 	logger.Info("Connected to PostgreSQL Database.")
 	defer db.Close()
 
-	// init session redis
+	// init session redis for session manager
 	redisPool := &redis.Pool{
 		MaxIdle: 10,
 		Dial: func() (redis.Conn, error) {
@@ -69,16 +71,36 @@ func main() {
 
 	// init application struct by DI
 	app := &application{
+		env:            os.Getenv("APP_ENV"),
 		logger:         logger,
-		snippets:       &models.SnippetModel{DB: db},
+		snippets:       &models.SnippetModel{DB: db}, // use constructor function instead
+		users:          &models.UserModel{DB: db},    // use constructor function instead
 		templateCache:  templateCache,
 		formDecoder:    formDecoder,
 		sessionManager: sessionManager,
 	}
 
+	tlsConfig := &tls.Config{
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+	}
+
+	// server configuration
+	srv := &http.Server{
+		Addr:      *addr,
+		Handler:   app.routes(),
+		ErrorLog:  slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		TLSConfig: tlsConfig,
+		// idle, read and write timeout to server
+		IdleTimeout:  time.Minute,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		// maximum header size 0.5MB
+		MaxHeaderBytes: 524288,
+	}
+
 	logger.Info("starting server", "addr", *addr)
 
-	err = http.ListenAndServe(fmt.Sprintf(":%s", *addr), app.routes())
+	err = srv.ListenAndServeTLS("tls/cert.pem", "tls/key.pem")
 	logger.Error(err.Error())
 	os.Exit(1)
 }

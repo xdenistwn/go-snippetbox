@@ -10,14 +10,6 @@ import (
 	"snippetbox.stwn.dev/internal/validator"
 )
 
-type snippetCreateForm struct {
-	Title   string `form:"title"`
-	Content string `form:"content"`
-	Expires int    `form:"expires"`
-	// struct embedding
-	validator.Validator `form:"-"`
-}
-
 func (app *application) handlerHome(w http.ResponseWriter, r *http.Request) {
 	snippets, err := app.snippets.Latest()
 	if err != nil {
@@ -28,6 +20,17 @@ func (app *application) handlerHome(w http.ResponseWriter, r *http.Request) {
 	app.render(w, r, http.StatusOK, "home.html", templateData{
 		Snippets: snippets,
 	})
+}
+
+/**
+ * Snippet Handler
+ */
+type snippetCreateForm struct {
+	Title   string `form:"title"`
+	Content string `form:"content"`
+	Expires int    `form:"expires"`
+	// struct embedding
+	validator.Validator `form:"-"`
 }
 
 func (app *application) handlerSnippetView(w http.ResponseWriter, r *http.Request) {
@@ -48,10 +51,8 @@ func (app *application) handlerSnippetView(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	flash := app.sessionManager.PopString(r.Context(), "flash")
 	data := app.newTemplateData(r)
 	data.Snippet = snippet
-	data.Flash = flash
 
 	app.render(w, r, http.StatusOK, "view.html", data)
 }
@@ -106,4 +107,79 @@ func (app *application) handlerSnippetCreatePost(w http.ResponseWriter, r *http.
 	app.sessionManager.Put(r.Context(), "flash", "Snippet successfully created!")
 
 	http.Redirect(w, r, fmt.Sprintf("/snippet/view/%d", id), http.StatusSeeOther)
+}
+
+/**
+ * End Snippet Handler
+ */
+
+/**
+ * Authentication Handler
+ */
+type userSignupForm struct {
+	Name                string `form:"name"`
+	Email               string `form:"email"`
+	Password            string `form:"password"`
+	validator.Validator `form:"-"`
+}
+
+func (app *application) handlerUserSignup(w http.ResponseWriter, r *http.Request) {
+	data := app.newTemplateData(r)
+	data.Form = userSignupForm{}
+	app.render(w, r, http.StatusOK, "signup.html", data)
+}
+func (app *application) handlerUserSignupPost(w http.ResponseWriter, r *http.Request) {
+	var form userSignupForm
+
+	err := app.decodePostForm(r, &form)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	form.CheckField(validator.NotBlank(form.Name), "name", "This field cannot be blank")
+	form.CheckField(validator.NotBlank(form.Email), "email", "This field cannot be blank")
+	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "This field must be a valid email address")
+	form.CheckField(validator.NotBlank(form.Password), "password", "This field cannot be blank")
+	form.CheckField(validator.MinChars(form.Password, 8), "password", "This field must be at least 8 characters long")
+	form.CheckField(validator.MaxChars(form.Password, 15), "password", "This field can only have 15 characters long")
+
+	if !form.Valid() {
+		data := app.newTemplateData(r)
+		data.Form = form
+		app.render(w, r, http.StatusUnprocessableEntity, "signup.html", data)
+		return
+	}
+
+	// insert
+	err = app.users.Insert(form.Name, form.Email, form.Password)
+	if err != nil {
+		if errors.Is(err, models.ErrDuplicateEmail) {
+			form.AddFieldError("email", "Email address is already in use")
+
+			data := app.newTemplateData(r)
+			data.Form = form
+			app.render(w, r, http.StatusUnprocessableEntity, "signup.html", data)
+		} else {
+			app.serverError(w, r, err)
+		}
+
+		return
+	}
+
+	// flash
+	app.sessionManager.Put(r.Context(), "flash", "Your signup was successful. Please log in.")
+	http.Redirect(w, r, "/user/login", http.StatusSeeOther)
+}
+
+func (app *application) handlerUserLogin(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "Display a form for logging in a user...")
+}
+
+func (app *application) handlerUserLoginPost(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "Authenticate and login the user...")
+}
+
+func (app *application) handlerUserLogoutPost(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "Logout the user...")
 }

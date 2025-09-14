@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"runtime/debug"
 )
 
 func commonHeaders(next http.Handler) http.Handler {
@@ -39,7 +40,14 @@ func (app *application) recoverPanic(next http.Handler) http.Handler {
 			if err := recover(); err != nil {
 				w.Header().Set("Connection", "close")
 
-				app.serverError(w, r, fmt.Errorf("%s", err))
+				stack := debug.Stack()
+
+				if app.env == "dev" {
+					fmt.Printf("stack trace ==> %s", stack)
+					app.serverError(w, r, fmt.Errorf("panic ==> %s", err))
+				} else {
+					app.serverError(w, r, fmt.Errorf("panic ==> %s", err))
+				}
 			}
 		}()
 
