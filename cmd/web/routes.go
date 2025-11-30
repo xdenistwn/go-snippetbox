@@ -4,17 +4,20 @@ import (
 	"net/http"
 
 	"github.com/justinas/alice"
+	"snippetbox.stwn.dev/ui"
 )
 
 func (app *application) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// handle static files
-	fileServer := http.FileServer(http.Dir("./ui/static/"))
-	mux.Handle("GET /static/", http.StripPrefix("/static", fileServer))
+	mux.Handle("GET /static/", http.FileServerFS(ui.Files))
+
+	// Add a new GET /ping route.
+	mux.HandleFunc("GET /ping", ping)
 
 	// session middleware for handler
-	dynamic := alice.New(app.sessionManager.LoadAndSave, noSurf)
+	dynamic := alice.New(app.sessionManager.LoadAndSave, noSurf, app.authenticate)
 
 	// public
 	mux.Handle("GET /{$}", dynamic.ThenFunc(app.handlerHome))
